@@ -70,13 +70,17 @@ jobs:
             --out feed.xml \
             --feed-url "${BASE}/feed.xml" \
             --item-link "${BASE}/"
+          # Some readers (FeedFox among them) accept a feed only when it is
+          # served as application/rss+xml. GitHub Pages decides the type by
+          # extension, so keep an .rss copy next to the .xml one.
+          cp feed.xml feed.rss
 
       - name: Commit and push
         if: github.event_name == 'workflow_dispatch' || steps.tz.outputs.run == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add feed.xml state/posts.json
+          git add feed.xml feed.rss state/posts.json
           if git diff --cached --quiet; then
             echo "No changes; nothing to commit."
           else
