@@ -1,0 +1,11 @@
+# Channels for the daily digest: one per line.
+# A channel can be written as:  rybar   |   @rybar   |   https://t.me/s/rybar
+# Lines starting with '#' and blank lines are ignored.
+# Only channels with a public web preview (t.me/s/<name>) can be collected;
+# closed channels are silently skipped.
+
+rybar
+boris_rozhin
+dva_majors
+milinfolive
+voenkorKotenok
