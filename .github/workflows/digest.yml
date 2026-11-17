@@ -2,10 +2,18 @@ name: Build daily digest and RSS feed
 
 on:
   schedule:
-    # cron runs in UTC. 12:00 UTC = 07:00 in Toronto during Eastern Standard
-    # Time (UTC-5). During daylight saving (EDT, UTC-4) the same wall clock
-    # would be 08:00 in Toronto; the schedule stays fixed in UTC on purpose.
-    - cron: '0 12 * * *'
+    # Target: the digest is ready by 05:00 in Toronto, so the run starts at
+    # 04:30 local time.
+    #
+    # GitHub cron is always UTC and cannot follow daylight saving, so we
+    # schedule two slots and let the guard step keep the one that is really
+    # 04:30 in Toronto:
+    #   winter (EST, UTC-5) -> 09:30 UTC
+    #   summer (EDT, UTC-4) -> 08:30 UTC
+    # The guard below drops the run that does not land at 04:xx local time,
+    # so exactly one run per day actually does the work.
+    - cron: '30 8 * * *'
+    - cron: '30 9 * * *'
   workflow_dispatch: {}
 
 permissions:
@@ -15,26 +23,43 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Check local time in Toronto
+        id: tz
+        run: |
+          HOUR="$(TZ=America/Toronto date +%H)"
+          echo "Toronto hour now: $HOUR"
+          if [ "$HOUR" = "04" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Not 04:xx in Toronto (daylight saving slot) - skipping."
+          fi
+
       - uses: actions/checkout@v4
+        if: github.event_name == 'workflow_dispatch' || steps.tz.outputs.run == 'true'
 
       - uses: actions/setup-python@v5
+        if: github.event_name == 'workflow_dispatch' || steps.tz.outputs.run == 'true'
         with:
           python-version: '3.12'
 
       - name: Collect posts from Telegram channels
+        if: github.event_name == 'workflow_dispatch' || steps.tz.outputs.run == 'true'
         run: |
           python3 collect.py \
             --channels rybar,boris_rozhin,dva_majors,milinfolive,voenkorKotenok \
             --out state/posts.json
 
       - name: Build markdown digest
+        if: github.event_name == 'workflow_dispatch' || steps.tz.outputs.run == 'true'
         run: |
-          DATE="$(date -u +%F)"
+          DATE="$(TZ=America/Toronto date +%F)"
           python3 build_digest.py --posts state/posts.json --date "$DATE" --out "digest-$DATE.md"
 
       - name: Render RSS feed
+        if: github.event_name == 'workflow_dispatch' || steps.tz.outputs.run == 'true'
         run: |
-          DATE="$(date -u +%F)"
+          DATE="$(TZ=America/Toronto date +%F)"
           OWNER="${GITHUB_REPOSITORY%%/*}"
           REPO="${GITHUB_REPOSITORY##*/}"
           BASE="https://${OWNER}.github.io/${REPO}"
@@ -44,12 +69,11 @@ jobs:
             --item-link "${BASE}/"
 
       - name: Commit and push
+        if: github.event_name == 'workflow_dispatch' || steps.tz.outputs.run == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add feed.xml state/posts.json
-          # digest-*.md is intentionally not committed here; add it if you want
-          # render.py to keep the up-to-3-issues history between runs.
           if git diff --cached --quiet; then
             echo "No changes; nothing to commit."
           else
