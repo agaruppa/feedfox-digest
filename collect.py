@@ -136,13 +136,41 @@ def fetch(name):
         return r.read().decode("utf-8", "replace")
 
 
+def read_channel_list(path):
+    """One channel per line. Blank lines and '#' comments are ignored.
+    A channel may be written as 'name', '@name' or a full t.me/s/... link."""
+    if not os.path.exists(path):
+        print(f"channels file not found: {path}", file=sys.stderr)
+        return []
+    names = []
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.split("#", 1)[0].strip()
+            if not line:
+                continue
+            if "/" in line:
+                line = line.rstrip("/").rsplit("/", 1)[-1]
+            line = line.lstrip("@")
+            if line and line not in names:
+                names.append(line)
+    return names
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--channels", default=",".join(DEFAULT_CHANNELS))
+    ap.add_argument("--channels-file", dest="channels_file", default=None,
+                    help="text file with one channel per line; '#' starts a comment")
     ap.add_argument("--hours", type=float, default=26)
     ap.add_argument("--out", default="/var/minis/shared/feeds/state/posts.json")
     args = ap.parse_args()
-    names = [c.strip() for c in args.channels.split(",") if c.strip()]
+    if args.channels_file:
+        names = read_channel_list(args.channels_file)
+    else:
+        names = [c.strip() for c in args.channels.split(",") if c.strip()]
+    if not names:
+        print("no channels given", file=sys.stderr)
+        return 2
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(hours=args.hours)
 
