@@ -1,0 +1,58 @@
+name: Build daily digest and RSS feed
+
+on:
+  schedule:
+    # cron runs in UTC. 12:00 UTC = 07:00 in Toronto during Eastern Standard
+    # Time (UTC-5). During daylight saving (EDT, UTC-4) the same wall clock
+    # would be 08:00 in Toronto; the schedule stays fixed in UTC on purpose.
+    - cron: '0 12 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Collect posts from Telegram channels
+        run: |
+          python3 collect.py \
+            --channels rybar,boris_rozhin,dva_majors,milinfolive,voenkorKotenok \
+            --out state/posts.json
+
+      - name: Build markdown digest
+        run: |
+          DATE="$(date -u +%F)"
+          python3 build_digest.py --posts state/posts.json --date "$DATE" --out "digest-$DATE.md"
+
+      - name: Render RSS feed
+        run: |
+          DATE="$(date -u +%F)"
+          OWNER="${GITHUB_REPOSITORY%%/*}"
+          REPO="${GITHUB_REPOSITORY##*/}"
+          BASE="https://${OWNER}.github.io/${REPO}"
+          python3 render.py "digest-$DATE.md" \
+            --out feed.xml \
+            --feed-url "${BASE}/feed.xml" \
+            --item-link "${BASE}/"
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add feed.xml state/posts.json
+          # digest-*.md is intentionally not committed here; add it if you want
+          # render.py to keep the up-to-3-issues history between runs.
+          if git diff --cached --quiet; then
+            echo "No changes; nothing to commit."
+          else
+            git commit -m "Update digest and RSS feed"
+            git push
+          fi
