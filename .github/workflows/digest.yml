@@ -76,6 +76,10 @@ jobs:
           cp feed.xml feed.rss
           # .nojekyll keeps Pages from running Jekyll over the generated pages.
           touch .nojekyll
+          # Housekeeping: keep a fortnight of issue pages, drop the rest.
+          if [ -d d ]; then
+            find d -type f -name '*.html' -mtime +14 -print -delete | wc -l
+          fi
 
       - name: Commit and push
         if: github.event_name == 'workflow_dispatch' || steps.tz.outputs.run == 'true'
@@ -89,3 +93,22 @@ jobs:
             git commit -m "Update digest and RSS feed"
             git push
           fi
+
+      - name: Monthly history squash
+        if: github.event_name == 'workflow_dispatch' || steps.tz.outputs.run == 'true'
+        run: |
+          if [ "$(date -u +%d)" != "01" ]; then
+            echo "not the 1st - skipping"
+            exit 0
+          fi
+          n=$(git rev-list --count HEAD)
+          if [ "$n" -lt 200 ]; then
+            echo "$n commits - history still readable, skipping"
+            exit 0
+          fi
+          git checkout -q --orphan squashed
+          git add -A
+          git commit -qm "squash history ($n commits) $(date -u +%Y-%m-%d)"
+          git branch -q -M squashed main
+          git push -q -f origin main
+          echo "squashed $n commits into one"
