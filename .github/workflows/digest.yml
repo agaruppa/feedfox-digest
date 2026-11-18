@@ -66,19 +66,23 @@ jobs:
           BASE="https://${OWNER}.github.io/${REPO}"
           python3 render.py "digest-$DATE.md" \
             --out feed.xml \
-            --feed-url "${BASE}/feed.xml" \
-            --item-link "${BASE}/"
+            --feed-url "${BASE}/feed.rss" \
+            --site-url "${BASE}" \
+            --page-base "${BASE}" \
+            --site-dir .
           # Some readers (FeedFox among them) accept a feed only when it is
           # served as application/rss+xml. GitHub Pages decides the type by
           # extension, so keep an .rss copy next to the .xml one.
           cp feed.xml feed.rss
+          # .nojekyll keeps Pages from running Jekyll over the generated pages.
+          touch .nojekyll
 
       - name: Commit and push
         if: github.event_name == 'workflow_dispatch' || steps.tz.outputs.run == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add feed.xml feed.rss state/posts.json
+          git add feed.xml feed.rss state/posts.json index.html d .nojekyll
           if git diff --cached --quiet; then
             echo "No changes; nothing to commit."
           else
